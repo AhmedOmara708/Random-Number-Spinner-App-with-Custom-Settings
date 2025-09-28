@@ -1,0 +1,321 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Spin-Down Picker (Wheel) — v3.2</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    :root {
+      --bg: #0b1020;
+      --card: #111731;
+      --muted: #8ca0b3;
+      --text: #e6eef5;
+      --accent: #6dd3ff;
+      --good: #7ee081;
+      --bad: #ff7676;
+      --highlight: #ffe08a;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: linear-gradient(180deg, #0a0f1e, #03060f); color: var(--text); }
+    .wrap { max-width: 1200px; margin: 32px auto; padding: 0 16px; }
+    h1 { margin: 0 0 6px; font-size: 26px; }
+    p.sub { margin: 0 8px 18px 0; color: var(--muted); }
+    .grid { display: grid; grid-template-columns: 1fr 480px; gap: 20px; }
+    @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
+    .card { background: radial-gradient(1200px 600px at -20% -40%, #1a244b 0%, rgba(17,23,49,0) 60%), var(--card); border: 1px solid #26315b; border-radius: 14px; padding: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+    .controls label { display: inline-block; margin: 6px 0; color: var(--muted); }
+    input[type=text], input[type=number] { background: #0e1530; color: #e6eef5; border: 1px solid #2e3a6a; border-radius: 8px; padding: 8px 10px; outline: none; }
+    input[type=number] { width: 70px; }
+    select { background: #0e1530; color: #e6eef5; border: 1px solid #2e3a6a; border-radius: 8px; padding: 8px 10px; outline: none; }
+    button { background: #1c2652; color: var(--text); border: 1px solid #2c3a74; border-radius: 10px; padding: 10px 12px; cursor: pointer; transition: transform .04s ease, background .2s ease; }
+    button:hover { background: #22306a; }
+    button:active { transform: translateY(1px); }
+    button.secondary { background: #0e1530; }
+    button.danger { background: #3b1822; border-color: #6e2334; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .spacer { height: 8px; }
+    .wheel-wrap { position: relative; display: grid; place-items: center; padding: 10px; }
+    canvas { width: 100%; max-width: 580px; height: auto; border-radius: 50%; display: block; }
+    .pointer { position: absolute; top: 6px; width: 0; height: 0; border-left: 18px solid transparent; border-right: 18px solid transparent; border-bottom: 28px solid var(--good); filter: drop-shadow(0 2px 2px rgba(0,0,0,.5)); }
+    .selected { text-align: center; font-size: 18px; margin-top: 10px; color: var(--text); min-height: 28px; }
+    .list { max-height: 580px; overflow: auto; }
+    .opt { background: rgba(255,255,255,0.03); border: 1px solid #25305a; border-radius: 10px; padding: 8px; display: grid; grid-template-columns: 1fr auto; align-items: center; margin: 6px 0; gap: 8px; transition: background .6s ease; }
+    .opt.exhausted { opacity: .45; text-decoration: line-through; }
+    .opt.flash { background: rgba(255,224,138,0.25); }
+    .hits { font-size: 12px; color: var(--muted); }
+    .footer { margin-top: 8px; color: var(--muted); font-size: 13px; text-align: center; }
+    .badge { font-size: 11px; border: 1px solid #2a376b; padding: 3px 8px; border-radius: 8px; color: var(--muted); }
+    .switch { position: relative; display: inline-block; width: 46px; height: 26px; vertical-align: middle; }
+    .switch input { display:none; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #3b466e; transition: .2s; border-radius: 26px; }
+    .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; transition: .2s; border-radius: 50%; }
+    input:checked + .slider { background-color: #4d8efc; }
+    input:checked + .slider:before { transform: translateX(20px); }
+    .muted { color: var(--muted); font-size: 12px; }
+    .thumb { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; background: #0e1530; border: 1px solid #2a376b; }
+    .opt-controls { display: flex; align-items: center; gap: 6px; }
+    .label-row { display:flex; align-items:center; gap:8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Spin-Down Picker</h1>
+    <p class="sub">v3.2 — Fixes Add not appearing under some sort modes, adds scroll-into-view & highlight.</p>
+
+    <div class="grid">
+      <!-- Wheel -->
+      <div class="card">
+        <div class="wheel-wrap">
+          <div class="pointer"></div>
+          <canvas id="wheel" width="760" height="760" title="Click to spin"></canvas>
+        </div>
+        <div class="row" style="justify-content:center; gap:12px; margin-top:8px;">
+          <button id="spinBtn">🎡 Spin</button>
+          <button id="undoBtn" class="secondary">↩️ Undo</button>
+          <button id="shuffleBtn" class="secondary">🔀 Shuffle wheel</button>
+          <span class="badge" id="statusBadge">Ready</span>
+        </div>
+        <div id="selected" class="selected">Add options and press Spin</div>
+      </div>
+
+      <!-- Controls / List -->
+      <div class="card controls">
+        <div class="row" style="justify-content:space-between; width:100%">
+          <div class="row">
+            <label>New option</label>
+            <input id="newOption" type="text" placeholder="Type a label and hit Add" />
+            <input id="newWeight" type="number" min="1" step="1" value="1" title="Weight" />
+            <button id="addBtn" type="button">Add</button>
+          </div>
+          <div class="row">
+            <label class="row" style="gap:10px; align-items:center;">
+              <span>Cycle mode</span>
+              <label class="switch">
+                <input id="cycleMode" type="checkbox" />
+                <span class="slider"></span>
+              </label>
+            </label>
+          </div>
+        </div>
+
+        <div class="row">
+          <label>N (times before removal)</label>
+          <input id="maxHits" type="number" min="1" value="3" />
+          <label>Sort</label>
+          <select id="sortMode">
+            <option value="manual">Manual / current</option>
+            <option value="alphaAsc">Alphabetical (A→Z)</option>
+            <option value="alphaDesc">Alphabetical (Z→A)</option>
+            <option value="numAsc">Numeric (asc)</option>
+            <option value="numDesc">Numeric (desc)</option>
+            <option value="recent">Recent (newest)</option>
+            <option value="chrono">Chronological (oldest)</option>
+          </select>
+          <button id="resetCountsBtn" class="secondary">Reset counts</button>
+          <button id="resetAllBtn" class="danger">Reset all</button>
+        </div>
+        <div class="muted">Weights set slice sizes & probabilities when Cycle mode is OFF. In Cycle mode, each eligible option appears once per round, ignoring weights, until all are seen.</div>
+        <div class="spacer"></div>
+        <div class="row" style="justify-content:space-between;">
+          <h3 style="margin:0;">Options</h3>
+          <span class="badge" id="eligibleBadge"></span>
+        </div>
+        <div class="list" id="optionsList"></div>
+        <div class="footer" id="footerMsg"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+let sequenceCounter = 0;
+let options = [ makeOption("1"), makeOption("2"), makeOption("3"), makeOption("4"), makeOption("5") ];
+let history = [];
+let rotation = 0;
+let spinning = false;
+let cycleBag = [];
+let sortMode = "manual";
+
+const palette = ["#6dd3ff","#7ee081","#ffd36e","#ff9d76","#b28cff","#7cd4a2","#f7a8e1","#8ed1fc","#ffd6a5","#caffbf","#bdb2ff","#a0c4ff"];
+
+function uid(){ return Math.random().toString(36).slice(2,9); }
+function byId(id){ return document.getElementById(id); }
+function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+function easeOutCubic(t){ return 1 - Math.pow(1 - t, 3); }
+function shuffleArray(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
+function parseMaybeNum(s){ const n = parseFloat(s); return isNaN(n) ? null : n; }
+function getMaxHits(){ const n = parseInt(byId('maxHits').value || '3', 10); return clamp(n,1,999); }
+function isCycleMode(){ return byId('cycleMode').checked; }
+function totalWeight(ops){ return ops.reduce((sum,o)=> sum + Math.max(0.0001, o.weight || 1), 0); }
+function makeOption(label){ return { id: uid(), label: String(label), hits: 0, weight: 1, image: null, imageUrl: null, addedAt: Date.now(), seq: sequenceCounter++ }; }
+
+function applySort(arr){
+  switch(sortMode){
+    case "alphaAsc": return [...arr].sort((a,b)=> a.label.localeCompare(b.label, undefined, {numeric: true, sensitivity: 'base'}));
+    case "alphaDesc": return [...arr].sort((a,b)=> b.label.localeCompare(a.label, undefined, {numeric: true, sensitivity: 'base'}));
+    case "numAsc": return [...arr].sort((a,b)=> (parseMaybeNum(a.label) ?? Infinity) - (parseMaybeNum(b.label) ?? Infinity));
+    case "numDesc": return [...arr].sort((a,b)=> (parseMaybeNum(b.label) ?? -Infinity) - (parseMaybeNum(a.label) ?? -Infinity));
+    case "recent": return [...arr].sort((a,b)=> b.addedAt - a.addedAt);
+    case "chrono": return [...arr].sort((a,b)=> a.seq - b.seq);
+    default: return arr;
+  }
+}
+function activeOptions(){ const n=getMaxHits(); return applySort(options.filter(o=>o.hits<n)); }
+
+function refillCycleBagIfNeeded(){
+  if(!isCycleMode()) { cycleBag = []; return; }
+  const eligible = activeOptions().map(o=>o.id);
+  cycleBag = cycleBag.filter(id => eligible.includes(id));
+  if(cycleBag.length === 0){ cycleBag = shuffleArray([...eligible]); }
+}
+
+const canvas = byId('wheel');
+const ctx = canvas.getContext('2d');
+const R = canvas.width/2;
+
+function drawWheel(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.save(); ctx.translate(R, R);
+  const act = activeOptions();
+  const W = totalWeight(act);
+  let angle = 0;
+  ctx.fillStyle = "#0e1530"; ctx.beginPath(); ctx.arc(0,0,R,0,Math.PI*2); ctx.fill();
+  for(let i=0;i<act.length;i++){
+    const w = Math.max(0.0001, act[i].weight || 1);
+    const slice = (w / W) * Math.PI * 2;
+    const start = rotation + angle;
+    const end = start + slice;
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,R-6,start,end); ctx.closePath();
+    ctx.fillStyle = palette[i % palette.length]; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = "rgba(0,0,0,.25)"; ctx.stroke();
+
+    const mid = (start+end)/2;
+    ctx.save();
+    ctx.rotate(mid); ctx.translate(R*0.60, 0); ctx.rotate(Math.PI/2);
+    ctx.fillStyle = "#101728"; ctx.font = "700 18px system-ui, sans-serif";
+    drawTextCentered(ctx, act[i].label, 180);
+    ctx.restore();
+
+    if(act[i].image){
+      const img = act[i].image; const rImg = R*0.78; const size = 42;
+      const cx = Math.cos(mid) * rImg, cy = Math.sin(mid) * rImg;
+      ctx.save(); roundRect(ctx, cx - size/2, cy - size/2, size, size, 6); ctx.clip();
+      ctx.drawImage(img, cx - size/2, cy - size/2, size, size); ctx.restore();
+    }
+    angle += slice;
+  }
+  ctx.beginPath(); ctx.arc(0,0,54,0,Math.PI*2); ctx.fillStyle="#e6eef5"; ctx.fill();
+  ctx.lineWidth=6; ctx.strokeStyle="#26315b"; ctx.stroke();
+  ctx.restore();
+}
+function roundRect(ctx,x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function drawTextCentered(ctx, text, maxWidth){
+  const m = ctx.measureText(text);
+  if(m.width <= maxWidth){ ctx.fillText(text, -m.width/2, 8); return; }
+  let out = text;
+  while(ctx.measureText(out + "…").width > maxWidth && out.length > 0){ out = out.slice(0,-1); }
+  ctx.fillText(out + "…", -ctx.measureText(out + "…").width/2, 8);
+}
+
+function getSegments(act){
+  const segs=[]; const W=totalWeight(act); let a=0;
+  for(const o of act){ const slice=(Math.max(0.0001,o.weight||1)/W)*Math.PI*2; segs.push({id:o.id,start:a,end:a+slice}); a+=slice; }
+  return segs;
+}
+
+function renderList(){
+  const list = byId('optionsList');
+  list.innerHTML = '';
+  const n = getMaxHits();
+  const display = applySort([...options]);
+  display.forEach(o=>{
+    const div = document.createElement('div'); div.className='opt'+(o.hits>=n?' exhausted':''); div.dataset.id=o.id;
+    const left = document.createElement('div'); left.className='label-row';
+    const img = document.createElement('img'); img.className='thumb'; if(o.imageUrl) img.src=o.imageUrl; else img.style.opacity=.25;
+    const label = document.createElement('input'); label.type='text'; label.value=o.label; label.onchange=()=>{ o.label=label.value; drawWheel(); renderList(); };
+    left.appendChild(img); left.appendChild(label);
+
+    const right = document.createElement('div'); right.className='opt-controls';
+    const wLab = document.createElement('span'); wLab.className='hits'; wLab.textContent='w:';
+    const wInput=document.createElement('input'); wInput.type='number'; wInput.min='0'; wInput.step='1'; wInput.value=o.weight||1; wInput.onchange=()=>{ o.weight=Math.max(0,parseInt(wInput.value||'1',10)); drawWheel(); };
+    const hits=document.createElement('span'); hits.className='hits'; hits.textContent=`${o.hits}/${n}`;
+    const imgBtn=document.createElement('button'); imgBtn.textContent='Img';
+    const file=document.createElement('input'); file.type='file'; file.accept='image/*'; file.style.display='none';
+    imgBtn.onclick=()=>file.click();
+    file.onchange=()=>{ const f=file.files[0]; if(!f) return; const r=new FileReader(); r.onload=(e)=>{ o.imageUrl=e.target.result; const image=new Image(); image.onload=()=>{ o.image=image; drawWheel(); renderList(); }; image.src=o.imageUrl; }; r.readAsDataURL(f); };
+    const rm=document.createElement('button'); rm.textContent='Remove'; rm.onclick=()=>{ options=options.filter(x=>x.id!==o.id); drawWheel(); renderList(); updateBadges(); refillCycleBagIfNeeded(); };
+
+    right.appendChild(wLab); right.appendChild(wInput); right.appendChild(hits); right.appendChild(imgBtn); right.appendChild(file); right.appendChild(rm);
+    div.appendChild(left); div.appendChild(right); list.appendChild(div);
+  });
+  byId('footerMsg').textContent = options.length ? '' : 'No options yet. Add some above.';
+}
+
+function updateBadges(){
+  const act = options.filter(o => o.hits < getMaxHits()).length;
+  const ex = options.length - act;
+  byId('eligibleBadge').textContent = `${act} eligible • ${ex} exhausted`;
+}
+
+function chooseTarget(act){
+  if(isCycleMode()){ refillCycleBagIfNeeded(); const pickIdx=Math.floor(Math.random()*cycleBag.length); const pickedId=cycleBag.splice(pickIdx,1)[0]; return act.findIndex(o=>o.id===pickedId); }
+  const W=totalWeight(act); let r=Math.random()*W; for(let i=0;i<act.length;i++){ r-=Math.max(0.0001,act[i].weight||1); if(r<=0) return i; } return act.length-1;
+}
+
+function spin(){
+  if(spinning) return;
+  const act = activeOptions();
+  if(act.length===0){ byId('selected').textContent='All options exhausted – reset counts or add more.'; return; }
+  spinning=true; byId('statusBadge').textContent='Spinning…';
+  const segs=getSegments(act); const targetIndex=chooseTarget(act); const seg=segs[targetIndex]; const targetCenter=(seg.start+seg.end)/2;
+  const start=rotation; const spins=4+Math.floor(Math.random()*3); let end=-Math.PI/2 - targetCenter + spins*Math.PI*2; while(end<=start) end+=Math.PI*2;
+  const duration=1800; const t0=performance.now();
+  function step(now){ const t=Math.max(0,Math.min(1,(now-t0)/duration)); const eased=1-Math.pow(1-t,3); rotation=start+(end-start)*eased; drawWheel();
+    if(t<1){ requestAnimationFrame(step); } else { const chosen=act[targetIndex]; const n=getMaxHits(); const real=options.find(o=>o.id===chosen.id);
+      if(real){ real.hits=Math.min(n,real.hits+1); history.unshift(real.id); byId('selected').textContent=`Selected: ${real.label}`; }
+      spinning=false; byId('statusBadge').textContent='Ready'; renderList(); updateBadges(); refillCycleBagIfNeeded(); } }
+  requestAnimationFrame(step);
+}
+
+function undoLast(){
+  if(spinning) return;
+  const last=history.shift(); if(!last) return; const n=getMaxHits(); const o=options.find(x=>x.id===last); if(o){ o.hits=Math.max(0,Math.min(n,o.hits-1)); }
+  byId('selected').textContent = history.length ? `Back to: ${options.find(x=>x.id===history[0])?.label || ''}` : 'Undo complete';
+  renderList(); updateBadges(); refillCycleBagIfNeeded();
+}
+
+// Controls
+byId('addBtn').addEventListener('click', () => {
+  const inp = byId('newOption');
+  const weightInput = byId('newWeight');
+  const label = (inp.value || '').trim();
+  if(!label){ inp.focus(); return; }
+  const w = Math.max(0, parseInt(weightInput.value || '1', 10)) || 1;
+  const o = makeOption(label); o.weight = w;
+  options.push(o);
+  inp.value=''; weightInput.value='1';
+  drawWheel(); renderList(); updateBadges(); refillCycleBagIfNeeded();
+  // Scroll to and flash the newly added row wherever it appears
+  requestAnimationFrame(() => {
+    const row = document.querySelector(`.opt[data-id="${o.id}"]`);
+    if(row){ row.classList.add('flash'); row.scrollIntoView({ behavior:'smooth', block:'center' }); setTimeout(()=>row.classList.remove('flash'), 700); }
+  });
+});
+['newOption','newWeight'].forEach(id => byId(id).addEventListener('keydown', e => { if(e.key==='Enter'){ e.preventDefault(); byId('addBtn').click(); } }));
+byId('spinBtn').onclick = spin;
+canvas.addEventListener('click', () => { if(!spinning) spin(); });
+byId('undoBtn').onclick = undoLast;
+byId('shuffleBtn').onclick = () => { options = shuffleArray(options); drawWheel(); renderList(); updateBadges(); refillCycleBagIfNeeded(); };
+byId('resetCountsBtn').onclick = () => { options.forEach(o => o.hits = 0); history=[]; byId('selected').textContent = 'Counts reset.'; drawWheel(); renderList(); updateBadges(); refillCycleBagIfNeeded(); };
+byId('resetAllBtn').onclick = () => { options=[]; history=[]; rotation=0; cycleBag=[]; byId('selected').textContent='Cleared all.'; drawWheel(); renderList(); updateBadges(); };
+
+byId('maxHits').addEventListener('change', ()=>{ renderList(); updateBadges(); drawWheel(); refillCycleBagIfNeeded(); });
+byId('cycleMode').addEventListener('change', ()=>{ refillCycleBagIfNeeded(); });
+byId('sortMode').addEventListener('change', (e)=>{ sortMode = e.target.value; drawWheel(); renderList(); });
+
+// initial
+sortMode = byId('sortMode').value;
+drawWheel(); renderList(); updateBadges(); refillCycleBagIfNeeded();
+</script>
+</body>
+</html>
